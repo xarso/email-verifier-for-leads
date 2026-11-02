@@ -1,0 +1,34 @@
+{
+    "actorSpecification": 1,
+    "fields": {},
+    "views": {
+        "overview": {
+            "title": "Verified leads",
+            "transformation": {
+                "fields": [
+                    "email", "status", "score", "reason", "sourceName", "sourceWebsite", "sourcePhone",
+                    "sourceCity", "isCatchAll", "isRoleBased", "isFreeProvider", "isDisposable", "didYouMean", "mxHost"
+                ]
+            },
+            "display": {
+                "component": "table",
+                "properties": {
+                    "email": { "label": "Email", "format": "text" },
+                    "status": { "label": "Status", "format": "text" },
+                    "score": { "label": "Score", "format": "number" },
+                    "reason": { "label": "Reason", "format": "text" },
+                    "sourceName": { "label": "Business", "format": "text" },
+                    "sourceWebsite": { "label": "Website", "format": "link" },
+                    "sourcePhone": { "label": "Phone", "format": "text" },
+                    "sourceCity": { "label": "City", "format": "text" },
+                    "isCatchAll": { "label": "Catch-all", "format": "boolean" },
+                    "isRoleBased": { "label": "Role address", "format": "boolean" },
+                    "isFreeProvider": { "label": "Free provider", "format": "boolean" },
+                    "isDisposable": { "label": "Disposable", "format": "boolean" },
+                    "didYouMean": { "label": "Did you mean", "format": "text" },
+                    "mxHost": { "label": "Mail server", "format": "text" }
+                }
+            }
+        }
+    }
+}

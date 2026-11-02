@@ -1,0 +1,48 @@
+{
+    "title": "Email Verifier for Leads",
+    "type": "object",
+    "schemaVersion": 1,
+    "properties": {
+        "datasetId": {
+            "title": "Dataset ID (from Google Maps Scraper or any Actor)",
+            "type": "string",
+            "description": "ID of a dataset with your leads, e.g. the output of Google Maps Scraper with contact details enabled. Emails are read from the 'email', 'emails' and 'leadsEnrichment' fields automatically, and the business name and website are kept next to each email.",
+            "editor": "textfield"
+        },
+        "emails": {
+            "title": "Emails",
+            "type": "array",
+            "description": "A list of email addresses to verify. Can be combined with a dataset ID. Duplicates are removed.",
+            "editor": "stringList",
+            "prefill": ["info@apify.com", "someone@gmial.com"]
+        },
+        "emailField": {
+            "title": "Custom email field",
+            "type": "string",
+            "description": "Optional. Field in your dataset that holds the email (dot notation allowed, e.g. 'contact.email'). Leave empty for automatic detection.",
+            "editor": "textfield",
+            "sectionCaption": "Advanced"
+        },
+        "smtpCheck": {
+            "title": "Check mailbox exists (SMTP)",
+            "type": "boolean",
+            "description": "Talks to the recipient's mail server to confirm the mailbox exists, without sending any email. Turn off for a faster domain-only check.",
+            "default": true
+        },
+        "maxEmails": {
+            "title": "Maximum emails",
+            "type": "integer",
+            "description": "Stop after this many unique emails. 0 = no limit.",
+            "minimum": 0,
+            "default": 0
+        },
+        "concurrency": {
+            "title": "Concurrency",
+            "type": "integer",
+            "description": "How many emails to verify in parallel.",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 10
+        }
+    }
+}
