@@ -14,7 +14,10 @@
             "type": "array",
             "description": "A list of email addresses to verify. Can be combined with a dataset ID. Duplicates are removed.",
             "editor": "stringList",
-            "prefill": ["info@apify.com", "someone@gmial.com"]
+            "prefill": [
+                "info@apify.com",
+                "someone@gmial.com"
+            ]
         },
         "emailField": {
             "title": "Custom email field",
@@ -22,12 +25,6 @@
             "description": "Optional. Field in your dataset that holds the email (dot notation allowed, e.g. 'contact.email'). Leave empty for automatic detection.",
             "editor": "textfield",
             "sectionCaption": "Advanced"
-        },
-        "smtpCheck": {
-            "title": "Check mailbox exists (SMTP)",
-            "type": "boolean",
-            "description": "Talks to the recipient's mail server to confirm the mailbox exists, without sending any email. Turn off for a faster domain-only check.",
-            "default": true
         },
         "maxEmails": {
             "title": "Maximum emails",

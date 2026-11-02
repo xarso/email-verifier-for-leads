@@ -63,7 +63,9 @@ export function suggestDomain(domain) {
     let best = null;
     for (const t of TYPO_TARGETS) {
         const d = levenshtein(domain, t);
-        if (d > 0 && d <= 2 && (!best || d < best.d)) best = { t, d };
+        // Distance 2 only for longer domains, so short real domains (gmx.at) aren't flagged.
+        const allowed = d === 1 || (d === 2 && domain.length >= 9);
+        if (d > 0 && allowed && (!best || d < best.d)) best = { t, d };
     }
     return best ? best.t : null;
 }
@@ -175,13 +177,17 @@ export function decide({ checks, mx, smtp, smtpEnabled }) {
         hasMx: mx ? mx.hasMx : false,
         mxHost: mx && mx.mxHosts.length ? mx.mxHosts[0] : null,
         smtpCode,
-        isCatchAll: smtp ? smtp.catchAll === true : null,
+        isCatchAll: smtp && typeof smtp.catchAll === 'boolean' ? smtp.catchAll : null,
         status,
         score,
         reason,
     });
 
     if (!checks.syntaxValid) return out('invalid', 0, 'Invalid email syntax');
+    // A typo of a big provider (gmial.com) is a dead lead even if the typo domain exists or is a trap.
+    if (checks.didYouMean && (checks.isDisposable || !mx || !mx.hasMx)) {
+        return out('invalid', 1, `Likely typo of ${checks.didYouMean}`);
+    }
     if (checks.isDisposable) return out('disposable', 5, 'Disposable / temporary email provider');
     if (!mx.hasMx) {
         if (['ENOTFOUND', 'NO_MX', 'ENODATA'].includes(mx.dnsError)) return out('invalid', 2, 'Domain has no mail server');
@@ -189,7 +195,7 @@ export function decide({ checks, mx, smtp, smtpEnabled }) {
     }
 
     const roleAdj = checks.isRoleBased ? -10 : 0;
-    if (!smtpEnabled) return out('unknown', 55 + roleAdj, 'Domain accepts mail; mailbox not checked (SMTP check disabled)');
+    if (!smtpEnabled) return out('valid_domain', 70 + roleAdj, 'Domain receives email; mailbox not checked');
     if (!smtp || smtp.error) return out('unknown', 50 + roleAdj, `Mail server did not answer (${smtp ? smtp.error : 'no attempt'})`);
 
     const code = smtp.code;
@@ -209,4 +215,4 @@ export function decide({ checks, mx, smtp, smtpEnabled }) {
 }
 
 // Statuses we are confident about. Only these are billed.
-export const BILLABLE_STATUSES = new Set(['valid', 'invalid', 'disposable', 'catch_all']);
+export const BILLABLE_STATUSES = new Set(['valid', 'valid_domain', 'invalid', 'disposable', 'catch_all']);

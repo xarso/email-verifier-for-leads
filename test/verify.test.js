@@ -46,6 +46,7 @@ test('static checks: syntax, disposable, role, free, typo', () => {
     assert.equal(staticChecks('john@gmail.com').isFreeProvider, true);
     assert.equal(suggestDomain('gmial.com'), 'gmail.com');
     assert.equal(suggestDomain('acme-industries.com'), null);
+    assert.equal(suggestDomain('gmx.at'), null); // real domain, must not be flagged
 });
 
 test('lookupMx sorts by priority and falls back to A record', async () => {
@@ -86,6 +87,15 @@ test('decide: verdicts and scores', () => {
     const role = decide({ checks: staticChecks('info@acme.com'), mx, smtp: { code: 250, catchAll: false }, smtpEnabled: true });
     assert.equal(role.status, 'valid');
     assert.equal(role.score, 85);
+});
+
+test('decide: no-SMTP mode, typos and unknown catch-all', () => {
+    const mx = { hasMx: true, mxHosts: ['mx.acme.com'], dnsError: null };
+    const r = decide({ checks: staticChecks('john@acme.com'), mx, smtp: null, smtpEnabled: false });
+    assert.equal(r.status, 'valid_domain');
+    assert.equal(r.isCatchAll, null);
+    assert.equal(decide({ checks: staticChecks('john@gmial.com'), mx: null, smtp: null, smtpEnabled: false }).status, 'invalid');
+    assert.equal(decide({ checks: staticChecks('john@acme.com'), mx, smtp: { error: 'ETIMEDOUT' }, smtpEnabled: true }).isCatchAll, null);
 });
 
 test('extractEmails reads Google Maps Scraper fields', () => {

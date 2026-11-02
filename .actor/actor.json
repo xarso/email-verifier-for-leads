@@ -2,7 +2,7 @@
     "actorSpecification": 1,
     "name": "email-verifier-for-leads",
     "title": "Email Verifier for Leads (Google Maps ready)",
-    "description": "Clean the emails from your Google Maps or any lead scrape in one step. Paste a dataset ID or a list of emails and get valid / invalid / catch-all / disposable verdicts with a 0-100 score, plus the business name and website next to each email. You only pay for decisive results.",
+    "description": "Clean the emails from your Google Maps or any lead scrape in one step. Paste a dataset ID or a list of emails and get valid-domain / invalid / disposable / typo verdicts with a 0-100 score, plus the business name and website next to each email. You only pay for decisive results.",
     "version": "0.1",
     "meta": {
         "templateId": "project_empty",

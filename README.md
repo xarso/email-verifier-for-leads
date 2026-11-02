@@ -1,14 +1,14 @@
 # Email Verifier for Leads (Google Maps ready)
 
-Clean the emails from your **Google Maps Scraper** results, or any lead list, in one step. Paste the dataset ID from your scrape and get back a ready-to-use lead list: every email with a **valid / invalid / catch-all / disposable** verdict, a **0-100 deliverability score**, and the **business name, website, phone and city** right next to it.
+Clean the emails from your **Google Maps Scraper** results, or any lead list, in one step. Paste the dataset ID from your scrape and get back a ready-to-use lead list: every email with a **valid domain / invalid / disposable / typo** verdict, a **0-100 deliverability score**, and the **business name, website, phone and city** right next to it.
 
-**You only pay for decisive results.** If a mail server doesn't answer and we can't tell, the email is marked `unknown` and you are not charged for it.
+**You only pay for decisive results.** If a domain's DNS can't be checked, the email is marked `unknown` and you are not charged for it.
 
 ## Why use this email verifier?
 
 - **Built for scraped leads.** Point it at a Google Maps Scraper dataset and it finds emails in `email`, `emails` and `leadsEnrichment` automatically. No CSV exports, no copy-paste.
 - **Keeps the context.** Each verified email stays attached to the business it came from, so the output is a lead list you can import straight into your outreach tool.
-- **Real mailbox check.** Talks to the recipient's mail server (SMTP) to confirm the mailbox exists, without sending any email.
+- **Fast and cheap.** Thousands of emails in minutes, with mail-server lookups shared across every address on the same domain.
 - **Fair billing.** Unknown results are free.
 - **Protects your sender reputation.** Remove invalid and disposable addresses before a cold email campaign and keep your bounce rate low.
 
@@ -22,8 +22,8 @@ Clean the emails from your **Google Maps Scraper** results, or any lead list, in
 | Role address | Shared inboxes like `info@`, `sales@`, `support@` |
 | Free provider | Gmail, Yahoo, Outlook and similar |
 | Mail server (MX) | The domain can receive email |
-| Mailbox (SMTP) | The specific mailbox exists |
-| Catch-all | The domain accepts every address, so the mailbox can't be confirmed |
+
+> **Coming soon:** mailbox-level (SMTP) verification and catch-all detection.
 
 ## How to verify emails from Google Maps
 
@@ -40,7 +40,6 @@ You can also paste a plain list of emails into **Emails**.
 {
     "datasetId": "YOUR_DATASET_ID",
     "emails": ["info@example.com"],
-    "smtpCheck": true,
     "maxEmails": 0,
     "concurrency": 10
 }
@@ -53,14 +52,13 @@ One row per unique email:
 ```json
 {
     "email": "info@joespizza.com",
-    "status": "valid",
-    "score": 85,
-    "reason": "Mailbox exists (role / shared address)",
+    "status": "valid_domain",
+    "score": 60,
+    "reason": "Domain receives email; mailbox not checked",
     "sourceName": "Joe's Pizza",
     "sourceWebsite": "https://joespizza.com",
     "sourcePhone": "+1 212 555 0100",
     "sourceCity": "New York",
-    "isCatchAll": false,
     "isRoleBased": true,
     "isFreeProvider": false,
     "isDisposable": false,
@@ -71,23 +69,22 @@ One row per unique email:
 
 ### Status values
 
-- `valid` — the mailbox exists. Safe to send.
-- `invalid` — bad syntax, no mail server, or the mailbox doesn't exist. Remove it.
-- `catch_all` — the domain accepts everything; the mailbox can't be confirmed. Send with care.
+- `valid_domain` — well-formed, not disposable, and the domain receives email. Score is lower for shared inboxes like `info@`.
+- `invalid` — bad syntax, a typo of a big provider (`gmial.com`), or a domain with no mail server. Remove it.
 - `disposable` — a temporary inbox. Remove it.
-- `unknown` — the server didn't give a clear answer. **Not charged.**
+- `unknown` — the domain's DNS couldn't be checked. **Not charged.**
 
 A run summary with counts per status is saved as `SUMMARY` in the key-value store.
 
 ## Pricing
 
-Pay per event: you are charged once per email with a decisive result (`valid`, `invalid`, `catch_all`, `disposable`). `unknown` results are free.
+Pay per event: you are charged once per email with a decisive result (`valid_domain`, `invalid`, `disposable`). `unknown` results are free.
 
 ## FAQ
 
-**Does it send emails?** No. It opens a conversation with the mail server and stops before any message is sent.
+**Does it send emails?** No. It only checks the address format and the domain's mail records.
 
-**Why are some results `catch_all`?** Some companies configure their mail server to accept every address. No verifier can confirm a mailbox on those domains; we tell you so instead of guessing.
+**Does it confirm the mailbox exists?** Not yet. Mailbox-level (SMTP) checks are coming in the next version.
 
 **Can I use it from my own code or an AI agent?** Yes, through the Apify API, the official clients, or the Apify MCP server.
 

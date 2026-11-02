@@ -29,7 +29,9 @@ async function collectInputs(input) {
 await Actor.init();
 
 const input = (await Actor.getInput()) || {};
-const smtpEnabled = input.smtpCheck !== false;
+// The mailbox (SMTP) check needs outbound port 25, which the Apify cloud blocks.
+// It stays off until an SMTP relay is configured through the SMTP_ENABLED env var.
+const smtpEnabled = process.env.SMTP_ENABLED === 'true';
 const concurrency = Math.min(Math.max(input.concurrency || 10, 1), 50);
 const heloDomain = input.heloDomain || 'mail.verifier.local';
 const mailFrom = input.mailFrom || `check@${heloDomain}`;
