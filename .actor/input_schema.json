@@ -7,7 +7,11 @@
             "title": "Dataset ID (from Google Maps Scraper or any Actor)",
             "type": "string",
             "description": "ID of a dataset with your leads, e.g. the output of Google Maps Scraper with contact details enabled. Emails are read from the 'email', 'emails' and 'leadsEnrichment' fields automatically, and the business name and website are kept next to each email.",
-            "editor": "textfield"
+            "editor": "resourcePicker",
+            "resourceType": "dataset",
+            "resourcePermissions": [
+                "READ"
+            ]
         },
         "emails": {
             "title": "Emails",
