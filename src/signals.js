@@ -1,5 +1,7 @@
 // Lead-quality signals that need no SMTP (port 25): does the email belong to the
 // business's own domain, who hosts the mail, and is the business website up.
+import { promises as dnsPromises } from 'node:dns';
+import net from 'node:net';
 
 // Second-level public suffixes common in lead data (foo.co.uk -> registrable "foo.co.uk").
 const MULTI_PART_SUFFIXES = new Set([
@@ -59,6 +61,19 @@ const PROVIDERS = [
 // Providers with well-run, actively managed business inboxes.
 const MANAGED_PROVIDERS = new Set(['Google Workspace', 'Microsoft 365', 'Zoho Mail', 'Mimecast', 'Proofpoint', 'Barracuda', 'Fastmail', 'Proton Mail', 'Rackspace']);
 
+// Consumer inboxes: same mail servers as the business products, but personal accounts.
+const PERSONAL_LABELS = [
+    [/^(gmail|googlemail)\.com$/, 'Gmail (personal)'],
+    [/^(outlook|hotmail|live|msn)\.[a-z.]+$/, 'Outlook.com (personal)'],
+    [/^(yahoo|ymail)\.[a-z.]+$/, 'Yahoo (personal)'],
+    [/^(icloud|me|mac)\.com$/, 'iCloud (personal)'],
+];
+
+export function personalProviderLabel(domain) {
+    for (const [re, label] of PERSONAL_LABELS) if (re.test(domain || '')) return label;
+    return 'Free / personal provider';
+}
+
 export function detectMailProvider(mxHosts) {
     if (!Array.isArray(mxHosts) || !mxHosts.length) return null;
     for (const host of mxHosts) {
@@ -68,34 +83,41 @@ export function detectMailProvider(mxHosts) {
     return 'Other / self-hosted';
 }
 
-// Is the website reachable? true = server answered, false = domain or server is gone,
-// null = could not tell (timeout, blocked). Never throws.
-const DEAD_CODES = new Set(['ENOTFOUND', 'ECONNREFUSED', 'EAI_AGAIN', 'EHOSTUNREACH', 'ENETUNREACH', 'ECONNRESET']);
+// Is the website still online? Checks that the hostname resolves and that a web server
+// accepts connections on 443 or 80. No page is downloaded, so bot protection on the site
+// can't distort the answer. true = online, false = domain or server is gone,
+// null = could not tell (timeout). Never throws.
+function tcpOpen(host, port, timeoutMs, connect) {
+    return new Promise((resolve) => {
+        let settled = false;
+        const done = (v) => { if (!settled) { settled = true; try { socket.destroy(); } catch { /* ignore */ } resolve(v); } };
+        const socket = connect({ host, port });
+        socket.setTimeout(timeoutMs, () => done('timeout'));
+        socket.once('connect', () => done('open'));
+        socket.once('error', (e) => done(e.code || 'error'));
+    });
+}
 
-export async function checkWebsite(url, { fetchImpl = fetch, timeoutMs = 8000 } = {}) {
-    const tryOnce = async (u) => {
-        const res = await fetchImpl(u, {
-            method: 'GET',
-            redirect: 'follow',
-            signal: AbortSignal.timeout(timeoutMs),
-            headers: { 'user-agent': 'Mozilla/5.0 (compatible; LeadQualityCheck/1.0)', accept: 'text/html,*/*' },
-        });
-        try { await res.body?.cancel(); } catch { /* ignore */ }
-        return res.status < 500;
-    };
-    const target = /^https?:\/\//i.test(url) ? url : `https://${url}`;
-    try {
-        return await tryOnce(target);
-    } catch (err) {
-        const code = err?.cause?.code || err?.code;
-        if (err?.name === 'TimeoutError' || err?.name === 'AbortError') return null;
-        if (code && /CERT|SSL|TLS/i.test(code)) return true; // a server is there, just a bad certificate
-        if (code === 'ECONNREFUSED' && target.startsWith('https://')) {
-            try { return await tryOnce(target.replace(/^https:/, 'http:')); } catch { return false; }
+export async function checkWebsite(url, { lookup = dnsPromises.lookup, connect = net.connect, timeoutMs = 5000 } = {}) {
+    const host = hostFromUrl(url);
+    if (!host) return null;
+    const candidates = host.startsWith('www.') ? [host, host.slice(4)] : [host, `www.${host}`];
+    let sawTimeout = false;
+    for (const h of candidates) {
+        try {
+            await lookup(h);
+        } catch (err) {
+            if (err.code === 'ENOTFOUND' || err.code === 'ENODATA') continue; // this name doesn't exist
+            sawTimeout = true; // resolver trouble: can't conclude
+            continue;
         }
-        if (code && DEAD_CODES.has(code)) return false;
-        return null;
+        for (const port of [443, 80]) {
+            const r = await tcpOpen(h, port, timeoutMs, connect);
+            if (r === 'open') return true;
+            if (r === 'timeout') sawTimeout = true;
+        }
     }
+    return sawTimeout ? null : false;
 }
 
 const DELIVERABLE = new Set(['valid', 'valid_domain', 'catch_all']);
@@ -113,15 +135,18 @@ export function enrich(result, { sourceWebsite = null, mxHosts = [], websiteAliv
     const emailDomain = registrableDomain(result.domain);
     const siteDomain = registrableDomain(hostFromUrl(sourceWebsite));
     const matchesBusinessWebsite = siteDomain && emailDomain ? siteDomain === emailDomain : null;
-    const mailProvider = result.hasMx ? detectMailProvider(mxHosts) : null;
+    let mailProvider = null;
+    if (result.hasMx) mailProvider = result.isFreeProvider ? personalProviderLabel(result.domain) : detectMailProvider(mxHosts);
 
     let { score } = result;
     const notes = [];
     if (DELIVERABLE.has(result.status)) {
-        if (matchesBusinessWebsite) { score += 10; notes.push("matches the business's website"); }
+        // The strongest signal for scraped leads: the email sits on the business's own domain.
+        if (matchesBusinessWebsite) { score += 15; notes.push("matches the business's website"); }
         if (result.isFreeProvider && siteDomain) { score -= 10; notes.push('personal inbox although the business has its own domain'); }
         if (MANAGED_PROVIDERS.has(mailProvider)) score += 5;
-        if (websiteAlive === false) { score -= 25; notes.push('business website is down'); }
+        // A dead website usually means a closed business: never better than "low".
+        if (websiteAlive === false) { score = Math.min(score - 25, 55); notes.push('business website is down'); }
         score = Math.max(1, Math.min(99, score));
     }
     return {

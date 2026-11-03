@@ -31,20 +31,44 @@ test('detectMailProvider recognises common hosts', () => {
     assert.equal(detectMailProvider([]), null);
 });
 
-const fakeFetch = (behaviour) => async () => {
-    if (behaviour instanceof Error) throw behaviour;
-    return { status: behaviour, body: { cancel: async () => {} } };
-};
-const netError = (code) => Object.assign(new TypeError('fetch failed'), { cause: { code } });
+import { EventEmitter } from 'node:events';
 
-test('checkWebsite: alive, dead, unknown', async () => {
-    assert.equal(await checkWebsite('joe.com', { fetchImpl: fakeFetch(200) }), true);
-    assert.equal(await checkWebsite('joe.com', { fetchImpl: fakeFetch(403) }), true); // bot-blocked but online
-    assert.equal(await checkWebsite('joe.com', { fetchImpl: fakeFetch(503) }), false);
-    assert.equal(await checkWebsite('joe.com', { fetchImpl: fakeFetch(netError('ENOTFOUND')) }), false);
-    assert.equal(await checkWebsite('joe.com', { fetchImpl: fakeFetch(netError('CERT_HAS_EXPIRED')) }), true);
-    const timeout = Object.assign(new Error('timed out'), { name: 'TimeoutError' });
-    assert.equal(await checkWebsite('joe.com', { fetchImpl: fakeFetch(timeout) }), null);
+// Fake DNS + TCP: `hosts` maps hostname -> { dns: 'ok'|'ENOTFOUND'|'ETIMEOUT', ports: { 443: 'open'|'ECONNREFUSED'|'timeout' } }
+function fakeNet(hosts) {
+    const lookup = async (h) => {
+        const d = hosts[h]?.dns ?? 'ENOTFOUND';
+        if (d !== 'ok') throw Object.assign(new Error(d), { code: d });
+        return { address: '1.2.3.4' };
+    };
+    const connect = ({ host, port }) => {
+        const sock = new EventEmitter();
+        sock.destroy = () => {};
+        let onTimeout;
+        sock.setTimeout = (_ms, cb) => { onTimeout = cb; };
+        const r = hosts[host]?.ports?.[port] ?? 'ECONNREFUSED';
+        setImmediate(() => {
+            if (r === 'open') sock.emit('connect');
+            else if (r === 'timeout') onTimeout();
+            else sock.emit('error', Object.assign(new Error(r), { code: r }));
+        });
+        return sock;
+    };
+    return { lookup, connect };
+}
+
+test('checkWebsite: online, dead, unknown, www fallback', async () => {
+    assert.equal(await checkWebsite('https://joe.com', fakeNet({ 'joe.com': { dns: 'ok', ports: { 443: 'open' } } })), true);
+    // Only port 80 open still counts as online
+    assert.equal(await checkWebsite('joe.com', fakeNet({ 'joe.com': { dns: 'ok', ports: { 80: 'open' } } })), true);
+    // Root has no DNS but www does (common setup)
+    assert.equal(await checkWebsite('joe.com', fakeNet({ 'www.joe.com': { dns: 'ok', ports: { 443: 'open' } } })), true);
+    // Domain gone
+    assert.equal(await checkWebsite('joe.com', fakeNet({})), false);
+    // Resolves but nothing listens
+    assert.equal(await checkWebsite('joe.com', fakeNet({ 'joe.com': { dns: 'ok' }, 'www.joe.com': { dns: 'ok' } })), false);
+    // Timeouts: can't tell
+    assert.equal(await checkWebsite('joe.com', fakeNet({ 'joe.com': { dns: 'ok', ports: { 443: 'timeout', 80: 'timeout' } } })), null);
+    assert.equal(await checkWebsite(null, fakeNet({})), null);
 });
 
 const base = (over = {}) => ({
@@ -56,7 +80,7 @@ test('enrich: matching website + managed provider raises the score', () => {
     const r = enrich(base(), { sourceWebsite: 'https://www.joespizza.com/', mxHosts: ['aspmx.l.google.com'], websiteAlive: true });
     assert.equal(r.matchesBusinessWebsite, true);
     assert.equal(r.mailProvider, 'Google Workspace');
-    assert.equal(r.score, 85);
+    assert.equal(r.score, 90);
     assert.equal(r.quality, 'high');
     assert.match(r.reason, /matches the business's website/);
 });
@@ -70,7 +94,16 @@ test('enrich: dead website and personal inbox lower the score', () => {
         sourceWebsite: 'https://joespizza.com', mxHosts: ['gmail-smtp-in.l.google.com'], websiteAlive: true,
     });
     assert.equal(personal.matchesBusinessWebsite, false);
-    assert.equal(personal.score, 65);
+    assert.equal(personal.mailProvider, 'Gmail (personal)'); // not "Google Workspace"
+    assert.equal(personal.score, 60); // no managed-provider bonus for personal inboxes
+});
+
+test('enrich: info@ on the business domain is a high-quality lead', () => {
+    const r = enrich(base({ domain: 'austindentistry.com', score: 60 }), {
+        sourceWebsite: 'https://austindentistry.com/', mxHosts: ['us-smtp-inbound-2.mimecast.com'], websiteAlive: true,
+    });
+    assert.equal(r.score, 80);
+    assert.equal(r.quality, 'high');
 });
 
 test('enrich leaves invalid results alone and handles missing data', () => {
