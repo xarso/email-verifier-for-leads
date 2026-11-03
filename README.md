@@ -98,6 +98,10 @@ A run summary with counts per status is saved as `SUMMARY` in the key-value stor
 
 Pay per event: you are charged once per email with a decisive result (`valid_domain`, `invalid`, `disposable`). `unknown` results are free.
 
+## Works well with
+
+- [Business Opportunity Scorer for Agencies](https://apify.com/xarso/data-tools): score the same Google Maps businesses for sales opportunities (no website, unclaimed listing, low rating...) and get a ready opening line for each one.
+
 ## FAQ
 
 **Does it send emails?** No. It only checks the address format and the domain's mail records.
