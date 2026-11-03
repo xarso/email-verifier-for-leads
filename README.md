@@ -1,12 +1,13 @@
 # Email Verifier for Leads (Google Maps ready)
 
-Clean the emails from your **Google Maps Scraper** results, or any lead list, in one step. Paste the dataset ID from your scrape and get back a ready-to-use lead list: every email with a **valid domain / invalid / disposable / typo** verdict, a **0-100 deliverability score**, and the **business name, website, phone and city** right next to it.
+Clean the emails from your **Google Maps Scraper** results, or any lead list, in one step. Paste the dataset ID from your scrape and get back a ready-to-use lead list: every email with a **valid domain / invalid / disposable / typo** verdict, a **lead quality rating (high / medium / low)**, and the **business name, website, phone and city** right next to it.
 
 **You only pay for decisive results.** If a domain's DNS can't be checked, the email is marked `unknown` and you are not charged for it.
 
 ## Why use this email verifier?
 
 - **Built for scraped leads.** Point it at a Google Maps Scraper dataset and it finds emails in `email`, `emails` and `leadsEnrichment` automatically. No CSV exports, no copy-paste.
+- **Scores the lead, not just the address.** Tells you whether the email belongs to the business's own domain, who hosts its mail (Google Workspace, Microsoft 365...) and whether the business website is still online. A dead website usually means a closed business.
 - **Keeps the context.** Each verified email stays attached to the business it came from, so the output is a lead list you can import straight into your outreach tool.
 - **Fast and cheap.** Thousands of emails in minutes, with mail-server lookups shared across every address on the same domain.
 - **Fair billing.** Unknown results are free.
@@ -22,6 +23,9 @@ Clean the emails from your **Google Maps Scraper** results, or any lead list, in
 | Role address | Shared inboxes like `info@`, `sales@`, `support@` |
 | Free provider | Gmail, Yahoo, Outlook and similar |
 | Mail server (MX) | The domain can receive email |
+| Matches business website | The email uses the same domain as the business's website (e.g. `info@joespizza.com` for joespizza.com) |
+| Mail provider | Google Workspace, Microsoft 365, Zoho, GoDaddy, self-hosted... |
+| Website online | The business website (or the email's domain) still answers |
 
 > **Coming soon:** mailbox-level (SMTP) verification and catch-all detection.
 
@@ -40,6 +44,7 @@ You can also paste a plain list of emails into **Emails**.
 {
     "datasetId": "YOUR_DATASET_ID",
     "emails": ["info@example.com"],
+    "checkWebsite": true,
     "maxEmails": 0,
     "concurrency": 10
 }
@@ -53,12 +58,16 @@ One row per unique email:
 {
     "email": "info@joespizza.com",
     "status": "valid_domain",
-    "score": 60,
-    "reason": "Domain receives email; mailbox not checked",
+    "quality": "high",
+    "score": 80,
+    "reason": "Domain receives email; mailbox not checked; matches the business's website",
     "sourceName": "Joe's Pizza",
     "sourceWebsite": "https://joespizza.com",
     "sourcePhone": "+1 212 555 0100",
     "sourceCity": "New York",
+    "matchesBusinessWebsite": true,
+    "mailProvider": "Google Workspace",
+    "websiteAlive": true,
     "isRoleBased": true,
     "isFreeProvider": false,
     "isDisposable": false,
@@ -73,6 +82,15 @@ One row per unique email:
 - `invalid` — bad syntax, a typo of a big provider (`gmial.com`), or a domain with no mail server. Remove it.
 - `disposable` — a temporary inbox. Remove it.
 - `unknown` — the domain's DNS couldn't be checked. **Not charged.**
+
+### Lead quality
+
+- `high` — deliverable domain plus strong signals (e.g. matches the business website, managed mail provider). Send first.
+- `medium` — deliverable, fewer signals (e.g. shared `info@` inbox, unknown provider).
+- `low` — deliverable domain but warning signs (e.g. business website is down). Send last or skip.
+- `bad` — invalid or disposable. Remove.
+
+Filter on `quality` to send to your best leads first.
 
 A run summary with counts per status is saved as `SUMMARY` in the key-value store.
 

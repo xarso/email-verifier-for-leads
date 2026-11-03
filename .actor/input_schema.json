@@ -30,6 +30,12 @@
             "editor": "textfield",
             "sectionCaption": "Advanced"
         },
+        "checkWebsite": {
+            "title": "Check the business website",
+            "type": "boolean",
+            "description": "Checks whether the business website (or the email's domain) is online. A dead website usually means a closed business and a dead inbox. Adds a few seconds per new domain.",
+            "default": true
+        },
         "maxEmails": {
             "title": "Maximum emails",
             "type": "integer",

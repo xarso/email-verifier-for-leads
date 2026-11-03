@@ -1,3 +1,5 @@
+import { isGoogleMapsUrl } from './signals.js';
+
 // Pulls emails out of one dataset item. Works with Google Maps Scraper output
 // (emails[], leadsEnrichment[].email) and any dataset with an email field.
 export function extractEmails(item, customField) {
@@ -21,9 +23,11 @@ export function extractEmails(item, customField) {
 export function sourceContext(item) {
     if (!item) return {};
     const pick = (v) => (typeof v === 'string' || typeof v === 'number' ? v : null);
+    // Google Maps items carry the Maps link in "url"; that is not the business's own site.
+    const website = [pick(item.website), pick(item.url)].find((u) => u && !isGoogleMapsUrl(u)) ?? null;
     return {
         sourceName: pick(item.title) ?? pick(item.name) ?? pick(item.companyName),
-        sourceWebsite: pick(item.website) ?? pick(item.url),
+        sourceWebsite: website,
         sourcePhone: pick(item.phone),
         sourceCategory: pick(item.categoryName),
         sourceCity: pick(item.city),

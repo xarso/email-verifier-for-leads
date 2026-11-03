@@ -3,6 +3,7 @@ import {
     normalizeEmail, staticChecks, lookupMx, smtpProbe, randomLocalPart, decide, BILLABLE_STATUSES,
 } from './verify.js';
 import { extractEmails, sourceContext } from './extract.js';
+import { enrich, checkWebsite, hostFromUrl } from './signals.js';
 
 const CHARGE_EVENT = 'email-verified';
 
@@ -36,6 +37,7 @@ const concurrency = Math.min(Math.max(input.concurrency || 10, 1), 50);
 const heloDomain = input.heloDomain || 'mail.verifier.local';
 const mailFrom = input.mailFrom || `check@${heloDomain}`;
 const maxEmails = input.maxEmails || 0;
+const websiteCheckEnabled = input.checkWebsite !== false;
 
 const emailMap = await collectInputs(input);
 let entries = [...emailMap.entries()];
@@ -49,14 +51,22 @@ log.info(`Verifying ${entries.length} unique emails (SMTP check: ${smtpEnabled ?
 // Per-domain caches: MX lookups and catch-all status are shared by every address on a domain.
 const mxCache = new Map();
 const catchAllCache = new Map();
+const websiteCache = new Map(); // host -> Promise<true|false|null>
+
+function websiteAliveFor(url) {
+    const host = hostFromUrl(url);
+    if (!host) return Promise.resolve(null);
+    if (!websiteCache.has(host)) websiteCache.set(host, checkWebsite(url));
+    return websiteCache.get(host);
+}
 
 async function verifyOne(email) {
     const checks = staticChecks(email);
-    if (!checks.syntaxValid || checks.isDisposable) return decide({ checks, mx: null, smtp: null, smtpEnabled });
+    if (!checks.syntaxValid || checks.isDisposable) return { result: decide({ checks, mx: null, smtp: null, smtpEnabled }), mxHosts: [] };
 
     if (!mxCache.has(checks.domain)) mxCache.set(checks.domain, lookupMx(checks.domain));
     const mx = await mxCache.get(checks.domain);
-    if (!mx.hasMx || !smtpEnabled) return decide({ checks, mx, smtp: null, smtpEnabled });
+    if (!mx.hasMx || !smtpEnabled) return { result: decide({ checks, mx, smtp: null, smtpEnabled }), mxHosts: mx.mxHosts };
 
     const knownCatchAll = catchAllCache.get(checks.domain);
     const probeAddresses = knownCatchAll === undefined ? [email, `${randomLocalPart()}@${checks.domain}`] : [email];
@@ -76,29 +86,40 @@ async function verifyOne(email) {
         }
     }
     const smtp = probe.error || !r ? { error: probe.error || 'NO_RCPT_RESPONSE' } : { ...r, catchAll };
-    return decide({ checks, mx, smtp, smtpEnabled });
+    return { result: decide({ checks, mx, smtp, smtpEnabled }), mxHosts: mx.mxHosts };
 }
 
 let processed = 0;
 let billed = 0;
 let stop = false;
 const counts = {};
+const qualityCounts = {};
 
 async function worker(queue) {
     while (!stop && queue.length) {
         const [email, item] = queue.shift();
+        const context = sourceContext(item);
         let result;
         try {
-            result = await verifyOne(email);
+            const verified = await verifyOne(email);
+            // Website check only for addresses that can still receive mail.
+            let websiteAlive = null;
+            const deliverable = ['valid', 'valid_domain', 'catch_all'].includes(verified.result.status);
+            if (websiteCheckEnabled && deliverable) {
+                const target = context.sourceWebsite || (verified.result.isFreeProvider ? null : `https://${verified.result.domain}`);
+                if (target) websiteAlive = await websiteAliveFor(target);
+            }
+            result = enrich(verified.result, { sourceWebsite: context.sourceWebsite, mxHosts: verified.mxHosts, websiteAlive });
         } catch (err) {
             // Never write customer emails to logs: log only the domain and the error.
             log.warning(`Failed to verify an address on ${email.split('@')[1] || 'unknown domain'}: ${err.message}`);
             result = { ...staticChecks(email), status: 'unknown', score: 0, reason: 'Internal error' };
             delete result.local;
         }
-        const row = { email, ...result, ...sourceContext(item), verifiedAt: new Date().toISOString() };
+        const row = { email, ...result, ...context, verifiedAt: new Date().toISOString() };
         await Actor.pushData(row);
         counts[row.status] = (counts[row.status] || 0) + 1;
+        if (row.quality) qualityCounts[row.quality] = (qualityCounts[row.quality] || 0) + 1;
         processed += 1;
 
         // Users only pay for decisive results; "unknown" is free.
@@ -117,7 +138,7 @@ async function worker(queue) {
 const queue = [...entries];
 await Promise.all(Array.from({ length: concurrency }, () => worker(queue)));
 
-const summary = { total: processed, billed, byStatus: counts };
+const summary = { total: processed, billed, byStatus: counts, byQuality: qualityCounts };
 await Actor.setValue('SUMMARY', summary);
 log.info(`Done. ${JSON.stringify(summary)}`);
 await Actor.exit();
