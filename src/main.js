@@ -91,7 +91,8 @@ async function worker(queue) {
         try {
             result = await verifyOne(email);
         } catch (err) {
-            log.warning(`Failed to verify ${email}: ${err.message}`);
+            // Never write customer emails to logs: log only the domain and the error.
+            log.warning(`Failed to verify an address on ${email.split('@')[1] || 'unknown domain'}: ${err.message}`);
             result = { ...staticChecks(email), status: 'unknown', score: 0, reason: 'Internal error' };
             delete result.local;
         }
